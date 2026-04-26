@@ -1,0 +1,16 @@
+[2026-04-26 11:52:46] ============================================================
+[2026-04-26 11:52:46]   BRONZE LAYER PIPELINE - START
+[2026-04-26 11:52:46]   Proyek: Analisis Tren Pembelian Pelanggan Retail
+[2026-04-26 11:52:46]   PIC   : Azka Mitsalia Zamzami
+[2026-04-26 11:52:46] ============================================================
+[2026-04-26 11:52:46] [EXTRACT] Membaca file: retail_store_transactions_23100.csv
+[2026-04-26 11:52:46] [EXTRACT] Berhasil dimuat: 23,100 baris, 13 kolom
+[2026-04-26 11:52:46] [VALIDATE] Memeriksa skema kolom...
+[2026-04-26 11:52:46] [VALIDATE] ⚠ Kolom tidak ditemukan: {'Transaction_ID', 'Gender', 'Discount_Applied', 'Product_Category', 'Loyalty_Member', 'Quantity', 'Total_Purchase_Amount', 'Payment_Method', 'Transaction_Date', 'Customer_ID', 'Age', 'Price_Per_Unit'}
+[2026-04-26 11:52:46] [VALIDATE] INFO Kolom tambahan (tetap disimpan): {'store_id', 'total_amount', 'transaction_time', 'quantity', 'loyalty_member', 'cashier_id', 'product_category', 'discount', 'product_id', 'customer_age', 'payment_method', 'transaction_id', 'unit_price'}
+[2026-04-26 11:52:46] [VALIDATE] Total baris     : 23,100
+[2026-04-26 11:52:46] [VALIDATE] Sel kosong ('')  : 0
+[2026-04-26 11:52:46] [VALIDATE] Sel null/NaN    : 0
+[2026-04-26 11:52:46] [VALIDATE] Catatan: Bronze Layer TIDAK menghapus/mengubah data apapun.
+[2026-04-26 11:52:46] [LOAD] Menyimpan data ke Bronze output...
+[2026-04-26 11:52:46] [ERROR] Terjadi kesalahan: [Errno 13] Permission denied: 'bronze_output\\bronze_transactions.csv'
