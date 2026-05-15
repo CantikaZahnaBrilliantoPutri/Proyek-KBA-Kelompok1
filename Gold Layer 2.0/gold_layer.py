@@ -277,6 +277,25 @@ def main() -> None:
         .map({"true": True, "false": False})
     )
     print("  ✓ Low_Stock → bool  (via string map, aman untuk semua format CSV)")
+
+    # ── [TAMBAHAN] Kolom bantu untuk Power BI dashboard ─────────
+    # month: untuk slicer, trend chart, dan month-to-month comparison
+    df["month"] = pd.to_datetime(df["Last_Order_Date"]).dt.strftime("%Y-%m")
+    print("  ✓ month → string (YYYY-MM) dari Last_Order_Date")
+
+    # inventory_risk: segmentasi risiko stok → langsung actionable di dashboard
+    df["inventory_risk"] = np.where(df["Low_Stock"] == True, "High Risk", "Safe")
+    print("  ✓ inventory_risk → 'High Risk' / 'Safe'")
+
+    # turnover_category: segmentasi turnover rate → bisa jadi slicer & heatmap
+    df["turnover_category"] = pd.cut(
+        df["Inventory_Turnover_Rate"],
+        bins=[0, 3, 6, 100],
+        labels=["Low", "Medium", "High"],
+    ).astype(str)
+    print("  ✓ turnover_category → 'Low' / 'Medium' / 'High'")
+    # ────────────────────────────────────────────────────────────
+
     print(f"  ✓ Timestamp Gold: {GOLD_TIMESTAMP}")
 
     # ── [PERBAIKAN] Audit Missing Value setelah cast type ───────
@@ -377,6 +396,7 @@ def main() -> None:
             active_products       = ("Status", lambda x: (x == "Active").sum()),
             backordered_products  = ("Status", lambda x: (x == "Backordered").sum()),
             discontinued_products = ("Status", lambda x: (x == "Discontinued").sum()),
+            last_order_month      = ("month",  "max"),   # ← TAMBAHAN: bulan terbaru per kategori
         )
         .reset_index()
         .rename(columns={"Category": "category"})
@@ -410,6 +430,7 @@ def main() -> None:
             avg_unit_price        = ("Unit_Price",       "mean"),
             low_stock_count       = ("Low_Stock",        "sum"),
             avg_reorder_quantity  = ("Reorder_Quantity", "mean"),
+            last_order_month      = ("month",            "max"),   # ← TAMBAHAN
         )
         .reset_index()
         .rename(columns={"Category": "category", "Status": "status"})
@@ -440,6 +461,7 @@ def main() -> None:
             avg_turnover_rate     = ("Inventory_Turnover_Rate", "mean"),
             low_stock_count       = ("Low_Stock",               "sum"),
             active_products       = ("Status", lambda x: (x == "Active").sum()),
+            last_order_month      = ("month",                    "max"),   # ← TAMBAHAN
         )
         .reset_index()
         .rename(columns={"Supplier_Name": "supplier_name"})
@@ -484,6 +506,7 @@ def main() -> None:
     df_prod = df[[
         "Product_ID", "Product_Name", "Category",
         "Supplier_Name", "Status", "Low_Stock",
+        "month", "inventory_risk", "turnover_category",   # ← TAMBAHAN
     ] + PRODUCT_FEATURES].copy().dropna(subset=PRODUCT_FEATURES)
 
     # ── [PERBAIKAN] Audit missing value sebelum clustering produk
@@ -553,6 +576,10 @@ def main() -> None:
         "Sales_Volume"           : "sales_volume",
         "Inventory_Turnover_Rate": "inventory_turnover_rate",
         "Inventory_Value"        : "inventory_value",
+        # kolom baru — sudah lowercase, tidak perlu rename tapi dicantumkan untuk kejelasan
+        # "month"            → month
+        # "inventory_risk"   → inventory_risk
+        # "turnover_category"→ turnover_category
     }).copy()
     gold_product_clusters["gold_processed_at"] = GOLD_TIMESTAMP
 
@@ -842,6 +869,7 @@ def main() -> None:
         discontinued_products  UInt32,
         low_stock_pct          Float64,
         revenue_per_unit_avg   Float64,
+        last_order_month       String,      -- ← TAMBAHAN: untuk slicer bulan Power BI
         gold_processed_at      String
     )
     ENGINE = MergeTree()
@@ -863,6 +891,7 @@ def main() -> None:
         low_stock_count       UInt32,
         avg_reorder_quantity  Float64,
         low_stock_pct         Float64,
+        last_order_month      String,      -- ← TAMBAHAN
         gold_processed_at     String
     )
     ENGINE = MergeTree()
@@ -887,6 +916,7 @@ def main() -> None:
         active_products          UInt32,
         low_stock_pct            Float64,
         supply_reliability_score Float64,
+        last_order_month         String,      -- ← TAMBAHAN
         gold_processed_at        String
     )
     ENGINE = MergeTree()
@@ -912,6 +942,9 @@ def main() -> None:
         inventory_value          Float64,
         cluster_id               UInt8,
         cluster_label            String,
+        month                    String,      -- ← TAMBAHAN: untuk slicer & trend chart
+        inventory_risk           String,      -- ← TAMBAHAN: 'High Risk' / 'Safe'
+        turnover_category        String,      -- ← TAMBAHAN: 'Low' / 'Medium' / 'High'
         gold_processed_at        String
     )
     ENGINE = MergeTree()
