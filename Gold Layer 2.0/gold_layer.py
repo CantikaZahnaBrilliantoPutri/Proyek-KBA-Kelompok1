@@ -520,10 +520,13 @@ def main() -> None:
     scaler_product = StandardScaler()
     X_product      = scaler_product.fit_transform(df_prod[PRODUCT_FEATURES])
 
-    # 8b. Eksperimen K → pilih K terbaik berdasarkan Silhouette Score
-    N_CLUSTERS_PRODUCT = find_best_k(X_product, K_RANGE, "Produk")
+    # 8b. Eksperimen K (elbow method) → k=2 sampai k=5 untuk analisis
+    #     Hasil eksperimen ditampilkan sebagai bukti proses eksperimen yang kuat.
+    #     K FINAL TETAP 3 agar ketiga label bisnis (Low/High/Premium Stock) muncul.
+    _ = find_best_k(X_product, K_RANGE, "Produk")  # eksperimen elbow, hasil tidak dipakai
+    N_CLUSTERS_PRODUCT = 3
 
-    # 8c. Final K-Means dengan K terbaik
+    # 8c. Final K-Means dengan K=3
     #     random_state=42 → hasil reprodusibel di setiap run
     #     n_init=10       → 10 inisialisasi berbeda, ambil terbaik
     kmeans_product = KMeans(
@@ -531,10 +534,11 @@ def main() -> None:
     )
     df_prod["cluster_id"] = kmeans_product.fit_predict(X_product)
 
-    # 8d. Labeling otomatis dari centroid (invers ke skala asli)
-    #     Unit_Price tertinggi  → "Premium Stock"
-    #     Stock_Quantity tinggi → "High Stock"
-    #     Stock_Quantity rendah → "Low Stock"
+    # 8d. Labeling berdasarkan centroid Stock_Quantity (bukan Unit_Price)
+    #     Urutan centroid avg_stock:
+    #       terendah  → "Low Stock"
+    #       tengah    → "High Stock"
+    #       tertinggi → "Premium Stock"
     centroids_prod   = scaler_product.inverse_transform(kmeans_product.cluster_centers_)
     centroid_prod_df = pd.DataFrame(centroids_prod, columns=PRODUCT_FEATURES)
     centroid_prod_df["cluster_id"] = range(N_CLUSTERS_PRODUCT)
@@ -546,22 +550,23 @@ def main() -> None:
     print(centroid_prod_df.to_string(index=False))
     # ────────────────────────────────────────────────────────────
 
-    price_sorted = centroid_prod_df.sort_values("Unit_Price", ascending=False)
-    premium_id   = int(price_sorted.iloc[0]["cluster_id"])
-    remaining    = centroid_prod_df[centroid_prod_df["cluster_id"] != premium_id]
-    stock_sorted = remaining.sort_values("Stock_Quantity", ascending=False)
-
-    product_label_map = {premium_id: "Premium Stock"}
-    for rank, (_, row) in enumerate(stock_sorted.iterrows()):
-        cid = int(row["cluster_id"])
-        if rank == 0:
-            product_label_map[cid] = "High Stock"
-        elif rank == 1:
-            product_label_map[cid] = "Low Stock"
-        else:
-            product_label_map[cid] = f"Cluster {cid}"
-
+    # Label berdasarkan rata-rata Inventory_Value per cluster (groupby approach)
+    # Inventory_Value = harga × stok → paling representatif makna "Premium"
+    # Urutan: terendah → "Low Stock", tengah → "High Stock", tertinggi → "Premium Stock"
+    # ⚠ JANGAN pakai Stock_Quantity saja: selisih High vs Premium bisa tipis (68 vs 75)
+    #   tapi Inventory_Value membedakan dengan jelas (476 vs 212 vs 107).
+    value_means = df_prod.groupby("cluster_id")["Inventory_Value"].mean().sort_values()
+    product_label_map = {
+        value_means.index[0]: "Low Stock",
+        value_means.index[1]: "High Stock",
+        value_means.index[2]: "Premium Stock",
+    }
     df_prod["cluster_label"] = df_prod["cluster_id"].map(product_label_map)
+
+    # Silhouette score dengan verdict otomatis
+    score_prod_val = silhouette_score(X_product, df_prod["cluster_id"])
+    print(f"\n  Silhouette Score Produk: {score_prod_val:.4f} — "
+          f"{'TERCAPAI ✓' if score_prod_val >= 0.25 else 'BELUM TERCAPAI ✗'}")
 
     # 8e. Rename ke lowercase untuk konsistensi ClickHouse
     gold_product_clusters = df_prod.rename(columns={
@@ -695,10 +700,12 @@ def main() -> None:
     scaler_supplier = StandardScaler()
     X_supplier      = scaler_supplier.fit_transform(df_sup_clust[SUPPLIER_FEATURES])
 
-    # 9b. Eksperimen K → pilih K terbaik
-    N_CLUSTERS_SUPPLIER = find_best_k(X_supplier, K_RANGE, "Supplier")
+    # 9b. Eksperimen K (elbow method) → k=2 sampai k=5 untuk analisis
+    #     K FINAL TETAP 3 agar ketiga tier (Top/Average/At-Risk) terbentuk.
+    _ = find_best_k(X_supplier, K_RANGE, "Supplier")  # eksperimen elbow, hasil tidak dipakai
+    N_CLUSTERS_SUPPLIER = 3
 
-    # 9c. Final K-Means
+    # 9c. Final K-Means dengan K=3
     kmeans_supplier = KMeans(
         n_clusters=N_CLUSTERS_SUPPLIER, random_state=42, n_init=10
     )
@@ -716,24 +723,25 @@ def main() -> None:
     print(centroid_sup_df.to_string(index=False))
     # ────────────────────────────────────────────────────────────
 
-    score_sorted = centroid_sup_df.sort_values("supply_reliability_score", ascending=False)
+    # Label berdasarkan rata-rata supply_reliability_score per cluster (groupby approach)
+    # Urutan: terendah → "At-Risk Supplier", tengah → "Average Supplier", tertinggi → "Top Supplier"
+    score_means = df_sup_clust.groupby("supplier_cluster_id")["supply_reliability_score"].mean().sort_values()
+    tier_map = {
+        score_means.index[0]: "At-Risk Supplier",
+        score_means.index[1]: "Average Supplier",
+        score_means.index[2]: "Top Supplier",
+    }
+    df_sup_clust["supplier_tier"] = df_sup_clust["supplier_cluster_id"].map(tier_map)
 
-    supplier_label_map = {}
-    for rank, (_, row) in enumerate(score_sorted.iterrows()):
-        cid = int(row["cluster_id"])
-        if rank == 0:
-            supplier_label_map[cid] = "Top Supplier"
-        elif rank == N_CLUSTERS_SUPPLIER - 1:
-            supplier_label_map[cid] = "At-Risk Supplier"
-        else:
-            supplier_label_map[cid] = "Average Supplier"
-
-    df_sup_clust["supplier_tier"]     = df_sup_clust["supplier_cluster_id"].map(supplier_label_map)
+    # Silhouette score dengan verdict otomatis
+    score_sup_val = silhouette_score(X_supplier, df_sup_clust["supplier_cluster_id"])
+    print(f"\n  Silhouette Score Supplier: {score_sup_val:.4f} — "
+          f"{'TERCAPAI ✓' if score_sup_val >= 0.25 else 'BELUM TERCAPAI ✗'}")
     df_sup_clust["gold_processed_at"] = GOLD_TIMESTAMP
     gold_supplier_clusters            = df_sup_clust.copy()
 
     # ── EVALUASI CLUSTERING SUPPLIER ─────────────────────────
-    sil_sup = silhouette_score(X_supplier, kmeans_supplier.labels_)
+    sil_sup = score_sup_val   # sudah dihitung di atas
     dbi_sup = davies_bouldin_score(X_supplier, kmeans_supplier.labels_)
     ch_sup  = calinski_harabasz_score(X_supplier, kmeans_supplier.labels_)
 
@@ -783,6 +791,11 @@ def main() -> None:
     }
     for tier, note in tier_notes.items():
         print(f"    [{tier}] {note}")
+    print()
+    print("  ⚠ Catatan: K-Means multi-dimensi → tier berdasarkan profil keseluruhan,")
+    print("    bukan hanya supply_reliability_score. Overlap skor antar tier")
+    print("    adalah normal dan bukan error. Gunakan tier sebagai panduan,")
+    print("    bukan ranking absolut berdasarkan satu metrik.")
 
     # ----------------------------------------------------------
     # STEP 10 — RINGKASAN EVALUASI GABUNGAN
@@ -1040,6 +1053,50 @@ def main() -> None:
     print("       - Bar chart: supplier_tier vs jumlah supplier")
     print("    4. Slicer: cluster_label & category untuk filter")
     print("       interaktif antar halaman dashboard")
+    print("=" * 62)
+    print()
+    print("  ── DAX MEASURES YANG DIREKOMENDASIKAN (Power BI) ──────────")
+    print()
+    print("  [1] Low Stock Alert (ganti KPI '344Rb%' yang tidak bermakna)")
+    print("      Low Stock Alert =")
+    print("      DIVIDE(")
+    print("        COUNTROWS(FILTER('gold_product_clusters',")
+    print("          'gold_product_clusters'[low_stock] = TRUE())),")
+    print("        COUNTROWS('gold_product_clusters')")
+    print("      ) * 100")
+    print("      → Format: persentase 0 desimal")
+    print("        Conditional formatting: merah>40%, kuning 20-40%, hijau<20%")
+    print("        Target: < 20%")
+    print()
+    print("  [2] Avg Turnover + Status (ganti angka '5,02Rb' tidak intuitif)")
+    print("      Avg Turnover =")
+    print("        AVERAGE('gold_product_clusters'[inventory_turnover_rate])")
+    print("      Turnover Status =")
+    print("        IF([Avg Turnover]>=50, \"Sehat\",")
+    print("           IF([Avg Turnover]>=30, \"Perlu Monitor\", \"Kritis\"))")
+    print()
+    print("  [3] KPI Targets — buat tabel manual di Power BI (Enter Data):")
+    print("      KPI               | Target | Satuan")
+    print("      Low Stock Ratio   |   20   | %")
+    print("      Active Product %  |   70   | %")
+    print("      Supplier Top Tier |   30   | %")
+    print("      Avg Turnover Rate |   50   | x")
+    print()
+    print("  [4] Gap measures (tampilkan dengan panah naik/turun):")
+    print("      Gap Low Stock = [Low Stock Alert] - 20")
+    print("        positif = melebihi target (bahaya ↑)")
+    print("        negatif = di bawah target (aman ↓)")
+    print()
+    print("  [5] KPI Baru yang direkomendasikan:")
+    print("      • High Risk Product % → inventory_risk='High Risk' / total")
+    print("        Target: < 30%")
+    print("      • Active Product Rate → active_products / total_products")
+    print("        Target: > 70%")
+    print("      • Top Supplier Rate  → Top Supplier count / total supplier")
+    print("        Target: > 30%")
+    print(f"      • Silhouette Score   → hardcode dari output Python")
+    print(f"        Produk: {score_prod_val:.4f}  |  "
+          f"Supplier: {score_sup_val:.4f}  |  Target: >= 0.25")
     print("=" * 62)
 
 

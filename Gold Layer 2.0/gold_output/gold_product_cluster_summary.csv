@@ -1,3 +1,4 @@
 cluster_label,product_count,avg_stock,avg_unit_price,avg_sales_volume,avg_turnover_rate,avg_inventory_value,low_stock_count,active_count,backordered_count,discontinued_count,low_stock_pct,gold_processed_at
-High Stock,595,46.39,3.18,59.42,49.21,131.12,330,192,194,209,55.46,2026-05-16 06:12:46
-Premium Stock,278,70.54,6.59,56.85,51.68,433.33,94,94,93,91,33.81,2026-05-16 06:12:46
+High Stock,291,75.29,2.85,60.02,50.91,211.87,76,92,102,97,26.12,2026-05-17 04:24:58
+Low Stock,381,30.24,3.72,57.88,49.96,107.78,273,119,123,139,71.65,2026-05-17 04:24:58
+Premium Stock,201,68.58,7.36,57.91,48.75,476.46,75,75,62,64,37.31,2026-05-17 04:24:58
